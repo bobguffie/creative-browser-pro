@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -28,12 +28,9 @@ jobs:
 
       - name: Build AppImage
         run: npm run dist -- --publish never
-        env:
-          # electron-builder needs a version for the AppImage metadata
-          ELECTRON_BUILDER_VERSION: 24.13.3
 
       - name: Upload AppImage artifact (every build)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: CreativeBrowser-AppImage
           path: release/*.AppImage
