@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; background: #121212; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; height: 100vh; color: white; font-family: sans-serif; overflow: hidden; }
+        .quadrant-bg { display: flex; flex-direction: column; border: 1px solid #333; }
+        .nav-bar { height: 34px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 8px; border-bottom: 1px solid #444; }
+        .label { font-size: 10px; color: #aaa; text-transform: uppercase; font-weight: bold; width: 70px; }
+        input { background: #1a1a1a; border: 1px solid #444; color: #fff; padding: 4px 8px; border-radius: 4px; flex-grow: 1; font-family: monospace; font-size: 11px; outline: none; }
+        button { background: #444; color: white; border: 1px solid #555; padding: 4px 10px; cursor: pointer; border-radius: 4px; font-size: 10px; }
+        button:hover { background: #555; }
+    </style>
+</head>
+<body>
+    <div class="quadrant-bg"><div class="nav-bar"><span class="label">Search</span><input type="text" id="i0" value="https://www.google.com"><button onclick="go(0)">GO</button></div></div>
+    <div class="quadrant-bg"><div class="nav-bar"><span class="label">AI Assets</span><input type="text" id="i1" value="https://www.bing.com/images/create"><button onclick="go(1)">GO</button></div></div>
+    <div class="quadrant-bg"><div class="nav-bar"><span class="label">Reference</span><input type="text" id="i2" value="https://www.pinterest.com"><button onclick="go(2)">GO</button></div></div>
+    <div class="quadrant-bg"><div class="nav-bar"><span class="label">Designer</span><span style="font-size: 10px; color: #666;">Workspace Studio</span></div></div>
+
+    <script>
+        function go(id) {
+            const url = document.getElementById('i' + id).value;
+            // Single IPC path for both Electron (window.electron from preload) and web preview.
+            if (window.electron && window.electron.send) {
+                window.electron.send('nav', { id: id, url: url });
+            } else if (window.parent !== window) {
+                window.parent.postMessage({ type: 'nav', data: { id: id, url: url } }, '*');
+            } else {
+                console.log('IPC Send:', 'nav', { id: id, url: url });
+            }
+        }
+        document.getElementById('i0').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(0); });
+        document.getElementById('i1').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(1); });
+        document.getElementById('i2').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(2); });
+    </script>
+</body>
+</html>

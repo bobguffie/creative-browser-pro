@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #toolbar { background: #252525; padding: 5px 10px; display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; border-bottom: 1px solid #444; z-index: 30; overflow-x: auto; min-height: 45px; flex-shrink: 0; }
+        .tool-group { display: flex; gap: 6px; border-right: 1px solid #444; padding-right: 8px; align-items: center; flex-shrink: 0; }
+        #main-area { display: flex; flex-grow: 1; position: relative; overflow: hidden; }
+        #sidebar { width: 50px; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 10px; z-index: 25; overflow-y: auto; flex-shrink: 0; }
+        .drawer { position: absolute; left: 50px; top: 0; bottom: 0; width: 240px; background: #1e1e1e; border-right: 1px solid #444; transform: translateX(-100%); transition: 0.3s; z-index: 20; padding: 15px; display: flex; flex-direction: column; gap: 10px; box-shadow: 5px 0 15px rgba(0,0,0,0.5); overflow-y: auto; }
+        .drawer.open { transform: translateX(0); }
+        #canvas-container { flex-grow: 1; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; width: 100%; height: 100%; }
+        canvas { border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        button, select, input { background: #444; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+        button:hover { border-color: #00ff00; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .side-btn { width: 34px; height: 34px; font-size: 16px; background: transparent; border: 1px solid transparent; flex-shrink: 0; }
+        .active { border-color: #00ff00 !important; color: #00ff00 !important; box-shadow: 0 0 5px #00ff00; }
+        .slider-wrap { display: flex; flex-direction: column; gap: 2px; margin-bottom: 3px; }
+        label { font-size: 9px; color: #888; text-transform: uppercase; font-weight: bold; }
+        #layer-list { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex-grow: 1; }
+        .layer-item { padding: 8px; background: #2a2a2a; margin-bottom: 4px; border-radius: 4px; font-size: 10px; display: flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid transparent; }
+        .layer-item:hover { background: #333; }
+        .layer-item.selected { border-color: #00ff00; background: #333; }
+        .layer-actions { display: flex; gap: 4px; margin-left: auto; }
+        .layer-btn { padding: 2px 4px; background: transparent; border: none; font-size: 12px; }
+        #toast { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%) translateY(80px); background: rgba(20,20,20,0.95); color: #e8e8e8; border: 1px solid #00ff00; padding: 8px 16px; border-radius: 6px; font-size: 11px; z-index: 999; transition: transform 0.25s ease; max-width: 80%; text-align: center; pointer-events: none; }
+        #toast.show { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <div class="tool-group">
+            <button onclick="undo()" title="Undo">↩️</button>
+            <button onclick="redo()" title="Redo">↪️</button>
+        </div>
+        <div class="tool-group">
+            <button onclick="moveLayer('front')" title="Bring to Front">🔼</button>
+            <button onclick="moveLayer('back')" title="Send to Back">🔽</button>
+        </div>
+        <div class="tool-group">
+            <label>Fill</label>
+            <input type="color" id="fillColor" value="#00ff00" onchange="updateStyle('fill', this.value)">
+            <label>Opacity</label>
+            <input type="range" min="0" max="1" step="0.1" value="1" style="width: 60px" oninput="updateStyle('opacity', parseFloat(this.value))">
+        </div>
+        <div class="tool-group">
+            <button onclick="sliceGroup()" title="Slice Selection">✂️ Slice</button>
+            <button onclick="weldObjects()" title="Weld">🔗</button>
+            <button onclick="unweldObjects()" title="Unweld">🔓</button>
+        </div>
+        <div class="tool-group">
+            <button id="eraserBtn" onclick="toggleEraser()" title="Eraser">🧽</button>
+            <button onclick="toggleFullscreen()" title="Fullscreen">🖥️</button>
+        </div>
+        <div class="tool-group">
+            <button onclick="document.getElementById('fileInput').click()" style="background:#007bff">📁 Import</button>
+            <input type="file" id="fileInput" hidden accept="image/*" onchange="importLocalMedia(event)">
+            <button id="removeBgBtn" onclick="removeBackground()" title="Select an image first" disabled style="background:#8a2be2">✨ Remove BG</button>
+            <button onclick="refreshWorkspace()" style="background:#dc3545">🔄 Refresh Workspace</button>
+        </div>
+        <div class="tool-group" style="border:none">
+            <button onclick="exportImage('png')" style="background:#28a745">💾 Save</button>
+            <button onclick="deleteObject()" style="color:#ff4444">🗑️</button>
+        </div>
+    </div>
+
+    <div id="main-area">
+        <div id="sidebar">
+            <button class="side-btn" id="shapesBtn" onclick="toggleDrawer('shapesDrawer')" title="Shapes">⭐</button>
+            <button class="side-btn" id="textBtn" onclick="toggleDrawer('textDrawer')" title="Text">🔤</button>
+            <button class="side-btn" id="brushBtn" onclick="toggleDrawer('brushDrawer')" title="Brushes">🖌️</button>
+            <button class="side-btn" id="selectBtn" onclick="toggleDrawer('selectDrawer')" title="Selection">🎯</button>
+            <button class="side-btn" id="adjustBtn" onclick="toggleDrawer('adjustDrawer')" title="Adjustments">🌓</button>
+            <button class="side-btn" id="aiBtn" onclick="toggleDrawer('localAiDrawer')" title="Local AI">✨</button>
+            <button class="side-btn" id="layersBtn" onclick="toggleDrawer('layersDrawer')" title="Layers">📂</button>
+            <button class="side-btn" id="canvasBtn" onclick="toggleDrawer('canvasDrawer')" title="Canvas">🖼️</button>
+            <button class="side-btn" id="lockBtn" onclick="toggleLock()" title="Lock">🔒</button>
+            <button class="side-btn" id="snapBtn" onclick="toggleSnap()" title="Snap">📏</button>
+        </div>
+
+        <div id="textDrawer" class="drawer">
+            <label>Text Settings</label>
+            <div class="slider-wrap">
+                <label>Font Family</label>
+                <select id="fontFamily" onchange="updateTextProperty('fontFamily', this.value)">
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Impact">Impact</option>
+                    <option value="Comic Sans MS">Comic Sans MS</option>
+                </select>
+            </div>
+            <div class="slider-wrap">
+                <label>Font Size</label>
+                <input type="range" min="10" max="200" value="40" id="fontSize" oninput="updateTextProperty('fontSize', parseInt(this.value))">
+            </div>
+            <div class="slider-wrap">
+                <label>Text Color</label>
+                <input type="color" id="textColor" value="#ffffff" onchange="updateTextProperty('fill', this.value)">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px;">
+                <button onclick="toggleTextStyle('bold')"><b>B</b></button>
+                <button onclick="toggleTextStyle('italic')"><i>I</i></button>
+                <button onclick="toggleTextStyle('underline')"><u>U</u></button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-top: 5px;">
+                <button onclick="updateTextProperty('textAlign', 'left')">Left</button>
+                <button onclick="updateTextProperty('textAlign', 'center')">Center</button>
+                <button onclick="updateTextProperty('textAlign', 'right')">Right</button>
+            </div>
+            <hr style="border:0; border-top:1px solid #444;">
+            <button onclick="addText()" style="background:#007bff; width: 100%;">+ Add New Text</button>
+        </div>
+
+        <div id="brushDrawer" class="drawer">
+            <label>Brushes & Pencils</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button onclick="setBrush('Pencil')">✏️ Pencil</button>
+                <button onclick="setBrush('Circle')">⭕ Circle</button>
+                <button onclick="setBrush('Spray')">💨 Spray</button>
+                <button onclick="setBrush('Pattern')">🏁 Pattern</button>
+            </div>
+            <div class="slider-wrap">
+                <label>Brush Size</label>
+                <input type="range" min="1" max="100" value="10" id="brushSize" oninput="updateBrush()">
+            </div>
+            <div class="slider-wrap">
+                <label>Brush Color</label>
+                <input type="color" id="brushColor" value="#00ff00" onchange="updateBrush()">
+            </div>
+            <div class="slider-wrap" id="patternSelectWrap" style="display:none">
+                <label>Pattern</label>
+                <select id="brushPattern" onchange="updateBrush()">
+                    <option value="checkerboard">Checkerboard</option>
+                    <option value="dots">Dots</option>
+                    <option value="stripes">Stripes</option>
+                </select>
+            </div>
+            <div class="slider-wrap">
+                <label>Mode</label>
+                <select id="brushMode" onchange="updateBrush()">
+                    <option value="continuous">Continuous</option>
+                    <option value="stamp">Stamp (Click)</option>
+                </select>
+            </div>
+            <button onclick="toggleDrawingMode()" id="drawModeBtn">Start Drawing</button>
+        </div>
+
+        <div id="selectDrawer" class="drawer">
+            <label>Selection Tools</label>
+            <button onclick="stopAllTools()" id="pointerBtn" class="active">🖱️ Selection Pointer</button>
+            <button onclick="startRectSelect()">⬛ Rect Mask Shape</button>
+            <button onclick="startLassoSelect()">➰ Cutout Helper</button>
+            <hr style="border:0; border-top:1px solid #444;">
+            <label>Retouching</label>
+            <div class="slider-wrap">
+                <label>Tool Size</label>
+                <input type="range" min="5" max="200" value="50" id="retouchSize" oninput="updateRetouchPreview()">
+            </div>
+            <button onclick="startCloneStamp()" id="cloneBtn">🩹 Clone Stamp</button>
+            <button onclick="startSpotHealing()" id="healBtn">✨ Spot Healing</button>
+            <p style="font-size: 8px; color: #888;">Clone: Alt+Click to source, then click to paint. Esc exits any tool.</p>
+        </div>
+
+        <div id="shapesDrawer" class="drawer">
+            <label>Add Elements</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button onclick="addRect()">⬛ Rect</button>
+                <button onclick="addCircle()">⭕ Circle</button>
+                <button onclick="addTriangle()">🔺 Triangle</button>
+                <button onclick="addStar()">⭐ Star</button>
+                <button onclick="addHexagon()">⬢ Hexagon</button>
+                <button onclick="addHeart()">❤️ Heart</button>
+                <button onclick="addPentagon()">⬠ Pentagon</button>
+                <button onclick="addOctagon()">🛑 Octagon</button>
+                <button onclick="addCloud()">☁️ Cloud</button>
+            </div>
+            <hr style="border:0; border-top:1px solid #444;">
+            <label>Image Frames (Drop Target)</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button onclick="addFrameShape('circle')">⭕ Circle Frame</button>
+                <button onclick="addFrameShape('star')">⭐ Star Frame</button>
+                <button onclick="addFrameShape('heart')">❤️ Heart Frame</button>
+                <button onclick="addFrameShape('rect')">⬛ Rect Frame</button>
+            </div>
+            <hr style="border:0; border-top:1px solid #444;">
+            <label>Frames</label>
+            <button onclick="addFrame('classic')">🖼️ Classic Frame</button>
+            <button onclick="addFrame('modern')">🔳 Modern Border</button>
+            <button onclick="addFrame('polaroid')">📸 Polaroid</button>
+            <hr style="border:0; border-top:1px solid #444;">
+            <button onclick="addText()" style="background:#007bff">T Add Text</button>
+        </div>
+
+        <div id="adjustDrawer" class="drawer">
+            <label>Manual Tools</label>
+            <div class="slider-wrap"><label>Eraser Size</label><input type="range" min="1" max="100" value="20" id="eraserSize" oninput="if(isEraserMode) document.getElementById('eraserSizeVal')"></div>
+            <button onclick="startColorKey()" style="margin-bottom: 5px;">🎯 Color Key (One-Click BG)</button>
+            <p style="font-size: 8px; color: #888; margin: 0 0 10px 0;">Click a color on the image to make it transparent.</p>
+
+            <label>Filters</label>
+            <div class="slider-wrap"><label>Brightness</label><input type="range" min="-1" max="1" step="0.05" value="0" id="bS" oninput="applyFilters()"></div>
+            <div class="slider-wrap"><label>Contrast</label><input type="range" min="-1" max="1" step="0.05" value="0" id="cS" oninput="applyFilters()"></div>
+            <div class="slider-wrap"><label>Saturation</label><input type="range" min="-1" max="1" step="0.05" value="0" id="sS" oninput="applyFilters()"></div>
+            <div class="slider-wrap"><label>Blur</label><input type="range" min="0" max="1" step="0.05" value="0" id="blS" oninput="applyFilters()"></div>
+
+            <hr style="border:0; border-top:1px solid #444;">
+            <label>Quick Presets</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button onclick="setFilterPreset('grayscale')">Grayscale</button>
+                <button onclick="setFilterPreset('sepia')">Sepia</button>
+                <button onclick="setFilterPreset('invert')">Invert</button>
+                <button onclick="setFilterPreset('none')">Reset</button>
+            </div>
+        </div>
+
+        <div id="layersDrawer" class="drawer"><label>Layers</label><ul id="layer-list"></ul></div>
+
+        <div id="localAiDrawer" class="drawer">
+            <label>Local AI (on-device, private)</label>
+            <p style="font-size: 8px; color: #888; margin: 0;">First use downloads the AI engine (~100-200MB, then cached for offline use).</p>
+            <button id="aiRemoveBgLocalBtn" onclick="localAiRemoveBg()" disabled>🪄 Remove Background (Local AI)</button>
+            <button id="aiMagicLayersBtn" onclick="localAiMagicLayers()" disabled>🧩 Split into Magic Layers (Local AI)</button>
+            <div id="aiDeviceWrap" style="display:flex; align-items:center; gap:6px;">
+                <button id="aiGearBtn" onclick="toggleAiGear()" title="Execution environment">⚙️</button>
+                <span id="aiDeviceLabel" style="font-size: 9px; color: #888;">Engine: Auto</span>
+            </div>
+            <div id="aiGearMenu" style="display:none; border:1px solid #444; border-radius:4px; padding:6px; background:#252525;">
+                <label style="font-size:8px; color:#888;">EXECUTION ENVIRONMENT</label>
+                <button onclick="setDeviceMode('auto')" id="devBtn-auto">Auto (default)</button>
+                <button onclick="setDeviceMode('gpu')" id="devBtn-gpu">GPU Only (WebGPU)</button>
+                <button onclick="setDeviceMode('cpu')" id="devBtn-cpu">CPU Only (battery friendly)</button>
+                <p id="aiProbeInfo" style="font-size:8px; color:#666; margin:4px 0 0 0;"></p>
+            </div>
+            <div id="aiProgressBar" style="display:none; height:6px; background:#333; border-radius:3px; overflow:hidden;">
+                <div id="aiProgressFill" style="height:100%; width:0%; background:#00ff00; transition: width 0.2s;"></div>
+            </div>
+            <p id="aiStatus" style="font-size: 9px; color: #00ff00; margin: 0; min-height: 12px;"></p>
+        </div>
+
+        <div id="canvasDrawer" class="drawer">
+            <label>Canvas Dimensions (manual; window resize auto-fits)</label>
+            <div class="slider-wrap"><label>Width</label><input type="number" id="canvW" value="1000" onchange="setManualCanvasSize()"></div>
+            <div class="slider-wrap"><label>Height</label><input type="number" id="canvH" value="800" onchange="setManualCanvasSize()"></div>
+            <hr style="border:0; border-top:1px solid #444;">
+            <label>Canvas Color</label>
+            <input type="color" value="#1a1a1a" oninput="canvas.setBackgroundColor(this.value); canvas.renderAll(); saveHistory();">
+        </div>
+
+        <div id="canvas-container"><canvas id="c"></canvas></div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="./vendor/fabric.min.js"></script>
+    <script>
+        // ============ STATE ============
+        let canvas;
+        let history = [], historyStep = -1;
+        let isRestoring = false;      // suppress history while loading/restoring/adding previews
+        let snapToGrid = false;
+        let isEraserMode = false;
+        let cloneSource = null;
+        let retouchPreview = null;
+        let activeRetouchTool = null; // 'clone' | 'heal'
+        let colorKeyPending = false;
+        let brushMode = 'continuous';
+
+        // ============ TOASTS (replaces blocking alert()) ============
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            if (!t) { console.log('[toast]', msg); return; }
+            t.textContent = msg;
+            t.classList.add('show');
+            clearTimeout(showToast._t);
+            showToast._t = setTimeout(() => t.classList.remove('show'), 2600);
+        }
+
+        // ============ CANVAS INIT (single owner of canvas + all event wiring) ============
+        function initCanvas() {
+            if (canvas) { canvas.dispose(); canvas = null; }
+            const container = document.getElementById('canvas-container');
+            container.innerHTML = '<canvas id="c"></canvas>';
+
+            canvas = new fabric.Canvas('c', {
+                width: container.clientWidth || 800,
+                height: container.clientHeight || 600,
+                backgroundColor: '#1a1a1a',
+                selection: true
+            });
+
+            // All event wiring lives here, where `canvas` definitely exists.
+            // History records adds, edits AND removals; bursts (e.g. slice's
+            // add-two-remove-two) collapse into one undo step via the debounce.
+            canvas.on('object:added', scheduleHistoryPush);
+            canvas.on('object:modified', scheduleHistoryPush);
+            canvas.on('object:removed', scheduleHistoryPush);
+            canvas.on('mouse:down', handleMouseDown);
+            canvas.on('mouse:move', handleMouseMove);
+            canvas.on('mouse:dblclick', handleDblClick);
+            canvas.on('object:moving', handleMoving);
+            canvas.on('selection:created', syncRemoveBgButton);
+            canvas.on('selection:updated', syncRemoveBgButton);
+            canvas.on('selection:cleared', syncRemoveBgButton);
+            canvas.on('object:added', syncRemoveBgButton);
+            canvas.on('object:removed', syncRemoveBgButton);
+            canvas.on('mouse:up', syncRemoveBgButton);   // programmatic setActiveObject doesn't fire selection events
+
+            resizeCanvas();
+            pushHistory();
+        }
+
+        // ============ RESIZE (the ONLY resize system) ============
+        // Canvas always matches its container quadrant: no distortion, no overflow.
+        function resizeCanvas() {
+            if (!canvas) return;
+            const container = document.getElementById('canvas-container');
+            if (!container) return;
+            const w = Math.max(50, container.clientWidth - 20);
+            const h = Math.max(50, container.clientHeight - 20);
+            if (canvas.getWidth() !== w || canvas.getHeight() !== h) {
+                canvas.setDimensions({ width: w, height: h });
+            }
+            canvas.calcOffset();
+            canvas.requestRenderAll();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('load', resizeCanvas);
+
+        function setManualCanvasSize() {
+            if (!canvas) return;
+            const w = parseInt(document.getElementById('canvW').value) || canvas.getWidth();
+            const h = parseInt(document.getElementById('canvH').value) || canvas.getHeight();
+            canvas.setDimensions({ width: w, height: h });
+            canvas.requestRenderAll();
+            saveHistory();
+        }
+
+        // ============ HISTORY ============
+        let historyTimer = null;
+        function scheduleHistoryPush() {
+            if (isRestoring) return;
+            clearTimeout(historyTimer);
+            historyTimer = setTimeout(() => { if (!isRestoring) pushHistory(); }, 60);
+        }
+
+        function pushHistory() {
+            if (isRestoring || !canvas) return;
+            const json = JSON.stringify(canvas.toJSON());
+            if (history[historyStep] === json) { updateLayerList(); return; }
+            history = history.slice(0, historyStep + 1);
+            history.push(json);
+            historyStep++;
+            updateLayerList();
+        }
+
+        function saveHistory() { pushHistory(); }
+
+        function restoreStep(step) {
+            if (step < 0 || step >= history.length || !canvas) return;
+            isRestoring = true;
+            historyStep = step;
+            canvas.loadFromJSON(history[step], () => {
+                canvas.renderAll();
+                isRestoring = false;
+                updateLayerList();
+                syncRemoveBgButton();
+            });
+        }
+
+        function undo() { if (historyStep > 0) restoreStep(historyStep - 1); }
+        function redo() { if (historyStep < history.length - 1) restoreStep(historyStep + 1); }
+
+        // ============ UNIFIED POINTER INPUT ============
+        // One dispatcher: color-key click, clone stamp, spot healing, stamp brush.
+        function handleMouseDown(opt) {
+            const pointer = canvas.getPointer(opt.e);
+
+            if (colorKeyPending) {
+                colorKeyPending = false;
+                applyColorKeyAt(pointer);
+                return;
+            }
+            if (activeRetouchTool === 'clone') {
+                cloneAt(opt, pointer);
+                return;
+            }
+            if (activeRetouchTool === 'heal') {
+                healAt(pointer);
+                return;
+            }
+            if (canvas.isDrawingMode && brushMode === 'stamp') {
+                stampAt(pointer);
+            }
+        }
+
+        function handleMouseMove(opt) {
+            if (retouchPreview) {
+                const pointer = canvas.getPointer(opt.e);
+                retouchPreview.set({ left: pointer.x, top: pointer.y });
+                canvas.bringToFront(retouchPreview);
+                canvas.requestRenderAll();
+                return;
+            }
+            if (isEraserMode) {
+                eraseAtPointer(canvas.getPointer(opt.e));
+            }
+        }
+
+        // ============ TOOLS ============
+        function stopAllTools() {
+            if (!canvas) return;
+            canvas.isDrawingMode = false;
+            isEraserMode = false;
+            activeRetouchTool = null;
+            colorKeyPending = false;
+            cloneSource = null;
+            if (retouchPreview) { canvas.remove(retouchPreview); retouchPreview = null; }
+            document.querySelectorAll('.drawer button, #toolbar button').forEach(b => b.classList.remove('active'));
+            document.getElementById('pointerBtn').classList.add('active');
+            canvas.defaultCursor = 'default';
+            canvas.hoverCursor = 'move';
+            canvas.requestRenderAll();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { stopAllTools(); showToast('Tools reset.'); }
+        });
+
+        function updateRetouchPreview() {
+            if (!retouchPreview) return;
+            const size = parseInt(document.getElementById('retouchSize').value);
+            retouchPreview.set({ radius: size / 2, width: size, height: size });
+            canvas.requestRenderAll();
+        }
+
+        function createRetouchPreview() {
+            if (retouchPreview) canvas.remove(retouchPreview);
+            const size = parseInt(document.getElementById('retouchSize').value);
+            retouchPreview = new fabric.Circle({
+                radius: size / 2,
+                fill: 'rgba(0, 255, 0, 0.2)',
+                stroke: '#00ff00',
+                strokeWidth: 1,
+                strokeDashArray: [3, 3],
+                selectable: false,
+                evented: false,
+                originX: 'center',
+                originY: 'center',
+                excludeFromExport: true
+            });
+            isRestoring = true;
+            canvas.add(retouchPreview);
+            isRestoring = false;
+        }
+
+        function startCloneStamp() {
+            stopAllTools();
+            activeRetouchTool = 'clone';
+            document.getElementById('cloneBtn').classList.add('active');
+            document.getElementById('pointerBtn').classList.remove('active');
+            createRetouchPreview();
+            showToast('Clone Stamp: Alt+Click to set source, then click to paint. Esc to exit.');
+        }
+
+        function startSpotHealing() {
+            stopAllTools();
+            activeRetouchTool = 'heal';
+            document.getElementById('healBtn').classList.add('active');
+            document.getElementById('pointerBtn').classList.remove('active');
+            createRetouchPreview();
+            showToast('Spot Healing: click a blemish to blend it. Esc to exit.');
+        }
+
+        function topImageAt(pointer) {
+            const imgs = canvas.getObjects().filter(o => o.type === 'image' && o.visible && o !== retouchPreview && o.containsPoint(pointer));
+            return imgs[imgs.length - 1];
+        }
+
+        function cloneAt(opt, pointer) {
+            if (opt.e.altKey) {
+                cloneSource = pointer;
+                showToast('Clone source set.');
+                return;
+            }
+            if (!cloneSource) { showToast('Alt+Click first to set the clone source.'); return; }
+            const size = parseInt(document.getElementById('retouchSize').value);
+            const sourceObj = topImageAt(cloneSource);
+            if (!sourceObj) { showToast('No image under the source point.'); return; }
+            sourceObj.clone((cloned) => {
+                const clip = new fabric.Circle({
+                    radius: size / 2,
+                    left: cloneSource.x,
+                    top: cloneSource.y,
+                    originX: 'center',
+                    originY: 'center',
+                    absolutePositioned: true
+                });
+                cloned.set({
+                    clipPath: clip,
+                    left: pointer.x,
+                    top: pointer.y,
+                    originX: 'center',
+                    originY: 'center'
+                });
+                canvas.add(cloned);
+                saveHistory();
+            });
+        }
+
+        function healAt(pointer) {
+            const size = parseInt(document.getElementById('retouchSize').value);
+            const active = topImageAt(pointer);
+            if (!active) return;
+            active.clone((cloned) => {
+                const clip = new fabric.Circle({
+                    radius: size / 2,
+                    left: pointer.x,
+                    top: pointer.y,
+                    originX: 'center',
+                    originY: 'center',
+                    absolutePositioned: true
+                });
+                cloned.set({
+                    clipPath: clip,
+                    left: pointer.x,
+                    top: pointer.y,
+                    originX: 'center',
+                    originY: 'center',
+                    opacity: 0.8
+                });
+                cloned.filters.push(new fabric.Image.filters.Blur({ blur: 0.1 }));
+                cloned.applyFilters();
+                canvas.add(cloned);
+                saveHistory();
+            });
+        }
+
+        // Eraser: erase pixels directly on the underlying image (works over images;
+        // over empty canvas it draws nothing). Uses destination-out circles.
+        function eraseAtPointer(pointer) {
+            const size = parseInt(document.getElementById('eraserSize').value) || 20;
+            const img = topImageAt(pointer);
+            if (!img) return;
+            const el = img.getElement();
+            if (!el) return;
+            if (!img.__eraseCanvas) {
+                const tmp = document.createElement('canvas');
+                tmp.width = el.naturalWidth || el.width;
+                tmp.height = el.naturalHeight || el.height;
+                tmp.getContext('2d').drawImage(el, 0, 0);
+                img.__eraseCanvas = tmp;
+            }
+            const tmp = img.__eraseCanvas;
+            const tctx = tmp.getContext('2d');
+            const lp = img.toLocalPoint({ x: pointer.x, y: pointer.y }, 'center', 'center');
+            const sx = tmp.width / img.width, sy = tmp.height / img.height;
+            tctx.globalCompositeOperation = 'destination-out';
+            tctx.beginPath();
+            tctx.arc((lp.x + img.width / 2) * sx, (lp.y + img.height / 2) * sy, (size / 2) * Math.abs(img.scaleX) * sx, 0, Math.PI * 2);
+            tctx.fill();
+            img.setElement(tmp);
+            img.dirty = true;
+            canvas.requestRenderAll();
+        }
+
+        function toggleEraser() {
+            isEraserMode = !isEraserMode;
+            canvas.isDrawingMode = isEraserMode;
+            if (isEraserMode) {
+                if (retouchPreview) { canvas.remove(retouchPreview); retouchPreview = null; }
+                activeRetouchTool = null;
+                document.getElementById('eraserBtn').classList.add('active');
+                document.getElementById('drawModeBtn').classList.remove('active');
+                showToast('Eraser: drag over an image to erase. Esc to exit.');
+            } else {
+                document.getElementById('eraserBtn').classList.remove('active');
+            }
+        }
+
+        function toggleDrawingMode() {
+            canvas.isDrawingMode = !canvas.isDrawingMode;
+            isEraserMode = false;
+            document.getElementById('eraserBtn').classList.remove('active');
+            const btn = document.getElementById('drawModeBtn');
+            btn.classList.toggle('active', canvas.isDrawingMode);
+            btn.innerText = canvas.isDrawingMode ? "Stop Drawing" : "Start Drawing";
+            if (canvas.isDrawingMode) updateBrush();
+        }
+
+        function setBrush(type) {
+            if (type === 'Pencil') canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+            if (type === 'Circle') canvas.freeDrawingBrush = new fabric.CircleBrush(canvas);
+            if (type === 'Spray') canvas.freeDrawingBrush = new fabric.SprayBrush(canvas);
+            if (type === 'Pattern') {
+                canvas.freeDrawingBrush = new fabric.PatternBrush(canvas);
+                document.getElementById('patternSelectWrap').style.display = 'block';
+            } else {
+                document.getElementById('patternSelectWrap').style.display = 'none';
+            }
+            updateBrush();
+        }
+
+        function updateBrush() {
+            if (!canvas.freeDrawingBrush) return;
+            const size = parseInt(document.getElementById('brushSize').value);
+            const color = document.getElementById('brushColor').value;
+            brushMode = document.getElementById('brushMode').value;
+
+            canvas.freeDrawingBrush.width = size;
+            canvas.freeDrawingBrush.color = color;
+            canvas.freeDrawingBrush.globalCompositeOperation = 'source-over';
+
+            if (canvas.freeDrawingBrush instanceof fabric.PatternBrush) {
+                const patternType = document.getElementById('brushPattern').value;
+                const patternCanvas = document.createElement('canvas');
+                patternCanvas.width = patternCanvas.height = 20;
+                const pCtx = patternCanvas.getContext('2d');
+                pCtx.fillStyle = color;
+
+                if (patternType === 'checkerboard') {
+                    pCtx.fillRect(0, 0, 10, 10);
+                    pCtx.fillRect(10, 10, 10, 10);
+                } else if (patternType === 'dots') {
+                    pCtx.beginPath();
+                    pCtx.arc(10, 10, 5, 0, Math.PI * 2);
+                    pCtx.fill();
+                } else if (patternType === 'stripes') {
+                    pCtx.fillRect(0, 0, 20, 5);
+                    pCtx.fillRect(0, 10, 20, 5);
+                }
+
+                canvas.freeDrawingBrush.source = patternCanvas;
+            }
+        }
+
+        function stampAt(pointer) {
+            const color = document.getElementById('brushColor').value;
+            const size = parseInt(document.getElementById('brushSize').value);
+            if (canvas.freeDrawingBrush instanceof fabric.CircleBrush) {
+                canvas.add(new fabric.Circle({
+                    left: pointer.x, top: pointer.y, radius: size / 2, fill: color, originX: 'center', originY: 'center'
+                }));
+            } else if (canvas.freeDrawingBrush instanceof fabric.SprayBrush) {
+                for (let i = 0; i < 20; i++) {
+                    const r = Math.random() * size;
+                    const a = Math.random() * Math.PI * 2;
+                    canvas.add(new fabric.Circle({
+                        left: pointer.x + r * Math.cos(a),
+                        top: pointer.y + r * Math.sin(a),
+                        radius: Math.random() * 2,
+                        fill: color
+                    }));
+                }
+            } else {
+                canvas.add(new fabric.Circle({
+                    left: pointer.x, top: pointer.y, radius: size / 2, fill: color, originX: 'center', originY: 'center'
+                }));
+            }
+        }
+
+        // ============ COLOR KEY ============
+        function startColorKey() {
+            const active = canvas.getActiveObject();
+            if (!active || active.type !== 'image') {
+                showToast('Select an image first.');
+                return;
+            }
+            colorKeyPending = true;
+            showToast('Click a color on the image to make it transparent.');
+        }
+
+        function applyColorKeyAt(pointer) {
+            const img = topImageAt(pointer);
+            if (!img) { showToast('Click on the image itself.'); return; }
+            const el = img.getElement();
+            if (!el) return;
+            const tmp = document.createElement('canvas');
+            tmp.width = el.naturalWidth || el.width;
+            tmp.height = el.naturalHeight || el.height;
+            const tctx = tmp.getContext('2d');
+            tctx.drawImage(el, 0, 0);
+            const lp = img.toLocalPoint({ x: pointer.x, y: pointer.y }, 'center', 'center');
+            const px = Math.round((lp.x + img.width / 2) * (tmp.width / img.width));
+            const py = Math.round((lp.y + img.height / 2) * (tmp.height / img.height));
+            const d = tctx.getImageData(px, py, 1, 1).data;
+            const color = `rgb(${d[0]},${d[1]},${d[2]})`;
+            img.filters.push(new fabric.Image.filters.RemoveColor({ color: color, distance: 0.1 }));
+            img.applyFilters();
+            canvas.requestRenderAll();
+            saveHistory();
+            showToast('Color keyed: ' + color);
+        }
+
+        // ============ MASK EDITING (double-click frame masks) ============
+        function handleDblClick(options) {
+            const obj = options.target;
+            if (obj && obj.clipPath) {
+                const isEditing = !!obj.isEditingMask;
+                obj.isEditingMask = !isEditing;
+
+                if (obj.isEditingMask) {
+                    const objMatrix = obj.calcTransformMatrix();
+                    const relMaskMatrix = obj.clipPath.calcTransformMatrix();
+                    const absMaskMatrix = fabric.util.multiplyTransformMatrices(objMatrix, relMaskMatrix);
+                    const absMaskPos = fabric.util.transformPoint({ x: 0, y: 0 }, absMaskMatrix);
+
+                    obj.clipPath.set({
+                        absolutePositioned: true,
+                        left: absMaskPos.x,
+                        top: absMaskPos.y,
+                        originX: 'center',
+                        originY: 'center'
+                    });
+
+                    obj.set({
+                        borderColor: '#00ff00',
+                        borderDashArray: [5, 5],
+                        cornerColor: '#00ff00'
+                    });
+                    showToast("Edit Mode: move the image inside the frame. Double-click again to lock.");
+                } else {
+                    const objMatrixInv = fabric.util.invertTransform(obj.calcTransformMatrix());
+                    const absMaskMatrix = obj.clipPath.calcTransformMatrix();
+                    const absMaskPos = fabric.util.transformPoint({ x: 0, y: 0 }, absMaskMatrix);
+                    const relMaskPos = fabric.util.transformPoint(absMaskPos, objMatrixInv);
+
+                    obj.clipPath.set({
+                        absolutePositioned: false,
+                        left: relMaskPos.x,
+                        top: relMaskPos.y,
+                        originX: 'center',
+                        originY: 'center'
+                    });
+
+                    obj.set({
+                        borderColor: 'rgb(178,204,255)',
+                        borderDashArray: null,
+                        cornerColor: 'rgb(178,204,255)'
+                    });
+                }
+                canvas.requestRenderAll();
+            }
+        }
+
+        function handleMoving(o) {
+            if (snapToGrid) {
+                o.target.set({
+                    left: Math.round(o.target.left / 25) * 25,
+                    top: Math.round(o.target.top / 25) * 25
+                });
+            }
+        }
+
+        // ============ LAYERS ============
+        function updateLayerList() {
+            const list = document.getElementById('layer-list');
+            if (!list || !canvas) return;
+            list.innerHTML = '';
+            const activeObj = canvas.getActiveObject();
+
+            canvas.getObjects().filter(o => o !== retouchPreview).slice().reverse().forEach((obj, idx) => {
+                const realIdx = canvas.getObjects().indexOf(obj);
+                const li = document.createElement('li');
+                li.className = `layer-item ${activeObj === obj ? 'selected' : ''}`;
+
+                const visibilityIcon = obj.visible ? '👁️' : '🕶️';
+
+                li.innerHTML = `
+                    <span onclick="selectLayer(${realIdx})">${obj.type} ${realIdx + 1}</span>
+                    <div class="layer-actions">
+                        <button class="layer-btn" onclick="event.stopPropagation(); toggleVisibility(${realIdx})" title="Toggle Visibility">${visibilityIcon}</button>
+                        <button class="layer-btn" onclick="event.stopPropagation(); moveLayerIdx(${realIdx}, 'up')" title="Move Up">🔼</button>
+                        <button class="layer-btn" onclick="event.stopPropagation(); moveLayerIdx(${realIdx}, 'down')" title="Move Down">🔽</button>
+                        <button class="layer-btn" onclick="event.stopPropagation(); deleteLayer(${realIdx})" title="Delete">🗑️</button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function selectLayer(idx) {
+            const obj = canvas.getObjects()[idx];
+            if (!obj) return;
+            canvas.setActiveObject(obj);
+            canvas.requestRenderAll();
+            updateLayerList();
+        }
+
+        function toggleVisibility(idx) {
+            const obj = canvas.getObjects()[idx];
+            if (!obj) return;
+            obj.set('visible', !obj.visible);
+            canvas.requestRenderAll();
+            updateLayerList();
+            saveHistory();
+        }
+
+        function moveLayerIdx(idx, dir) {
+            const obj = canvas.getObjects()[idx];
+            if (!obj) return;
+            if (dir === 'up') obj.bringForward();
+            else obj.sendBackwards();
+            canvas.requestRenderAll();
+            updateLayerList();
+            saveHistory();
+        }
+
+        function deleteLayer(idx) {
+            const obj = canvas.getObjects()[idx];
+            if (!obj) return;
+            canvas.remove(obj);
+            canvas.requestRenderAll();
+            updateLayerList();
+            saveHistory();
+        }
+
+        function moveLayer(dir) {
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                dir === 'front' ? obj.bringToFront() : obj.sendToBack();
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        function toggleLock() {
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                const L = !obj.lockMovementX;
+                obj.set({ lockMovementX: L, lockMovementY: L, lockScalingX: L, lockScalingY: L, hasControls: !L });
+                document.getElementById('lockBtn').classList.toggle('active', L);
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        function toggleSnap() { snapToGrid = !snapToGrid; document.getElementById('snapBtn').classList.toggle('active', snapToGrid); }
+
+        function toggleDrawer(id) {
+            document.querySelectorAll('.drawer').forEach(d => { if (d.id !== id) d.classList.remove('open'); });
+            document.getElementById(id).classList.toggle('open');
+        }
+
+        function toggleFullscreen() {
+            if (!window.electron || !window.electron.send) {
+                showToast('Fullscreen only works inside the desktop app.');
+                return;
+            }
+            const btn = document.querySelector('[title="Fullscreen"]');
+            if (btn.classList.contains('active')) {
+                btn.classList.remove('active');
+                window.electron.send('reset-layout');
+            } else {
+                btn.classList.add('active');
+                window.electron.send('expand-view', 3);
+            }
+            setTimeout(resizeCanvas, 100);
+        }
+
+        // ============ IMPORT / EXPORT / REFRESH ============
+        function importLocalMedia(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (f) => {
+                fabric.Image.fromURL(f.target.result, (img) => {
+                    img.scaleToWidth(Math.min(400, canvas.getWidth() / 2));
+                    const center = canvas.getCenter();
+                    img.set({ left: center.left, top: center.top, originX: 'center', originY: 'center' });
+                    canvas.add(img);
+                    canvas.setActiveObject(img);
+                    canvas.requestRenderAll();
+                    saveHistory();
+                    syncRemoveBgButton();  // programmatic selection doesn't fire selection events
+                    showToast('Image imported — Local AI tools are ready for it.');
+                });
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        }
+
+        function refreshWorkspace() {
+            if (confirm("Refresh workspace? This destroys the current canvas and starts fresh.")) {
+                stopAllTools();
+                history = [];
+                historyStep = -1;
+                document.getElementById('layer-list').innerHTML = '';
+                initCanvas();
+                showToast('Workspace reset.');
+            }
+        }
+        // (kept): confirm() for the one destructive action; all other dialogs are toasts
+
+        function exportImage(fmt) {
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL({ format: fmt });
+            link.download = `art.${fmt}`;
+            link.click();
+        }
+
+        function deleteObject() {
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                canvas.remove(obj);
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        function updateStyle(p, v) {
+            const o = canvas.getActiveObject();
+            if (o) { o.set(p, v); canvas.requestRenderAll(); saveHistory(); }
+        }
+
+        // ============ FILTERS ============
+        function applyFilters() {
+            const obj = canvas.getActiveObject();
+            if (!obj || obj.type !== 'image') return;
+            obj.filters = [
+                new fabric.Image.filters.Brightness({ brightness: parseFloat(document.getElementById('bS').value) }),
+                new fabric.Image.filters.Contrast({ contrast: parseFloat(document.getElementById('cS').value) }),
+                new fabric.Image.filters.Saturation({ saturation: parseFloat(document.getElementById('sS').value) }),
+                new fabric.Image.filters.Blur({ blur: parseFloat(document.getElementById('blS').value) })
+            ];
+            obj.applyFilters();
+            canvas.requestRenderAll();
+            saveHistory();
+        }
+
+        function setFilterPreset(type) {
+            const obj = canvas.getActiveObject();
+            if (!obj || obj.type !== 'image') { showToast('Select an image first.'); return; }
+            obj.filters = [];
+            if (type === 'grayscale') obj.filters.push(new fabric.Image.filters.Grayscale());
+            if (type === 'sepia') obj.filters.push(new fabric.Image.filters.Sepia());
+            if (type === 'invert') obj.filters.push(new fabric.Image.filters.Invert());
+            obj.applyFilters();
+            canvas.requestRenderAll();
+            saveHistory();
+        }
+
+        // ============ AI REMOVE BACKGROUND (via main process; key never in renderer) ============
+        function removeBackground() {
+            const obj = canvas.getActiveObject();
+            if (!obj || obj.type !== 'image') {
+                showToast('Select an image first.');
+                return;
+            }
+            const btn = document.getElementById('removeBgBtn');
+            if (btn) { btn.disabled = true; btn.innerText = '✨ Processing…'; }
+            const finish = () => { if (btn) { btn.innerText = '✨ Remove BG'; btn.disabled = false; syncRemoveBgButton(); } };
+
+            if (!window.electron || !window.electron.send) {
+                showToast('AI Remove BG only works inside the desktop app.');
+                finish();
+                return;
+            }
+            window.__aiPending = true;
+            window.electron.send('ai-remove-bg-request', {
+                base64: obj.toDataURL({ format: 'png' }).split(',')[1]
+            });
+            setTimeout(() => {
+                if (window.__aiPending) {
+                    window.__aiPending = false;
+                    showToast('AI request timed out.');
+                    finish();
+                }
+            }, 120000);
+        }
+
+        function syncRemoveBgButton() {
+            if (!canvas) return;
+            const obj = canvas.getActiveObject();
+            const isImg = !!(obj && obj.type === 'image');
+            const btn = document.getElementById('removeBgBtn');
+            if (btn) {
+                btn.disabled = !isImg;
+                btn.title = isImg ? 'Remove background with AI (needs GEMINI_API_KEY in .env)' : 'Select an image first';
+            }
+            // Local AI buttons track the same selection state.
+            if (typeof LOCAL_AI === 'undefined' || !LOCAL_AI.ramOk) return;
+            const localBtn = document.getElementById('aiRemoveBgLocalBtn');
+            const mlBtn = document.getElementById('aiMagicLayersBtn');
+            if (localBtn && !LOCAL_AI.busy) {
+                localBtn.disabled = !isImg;
+                localBtn.title = isImg ? 'Remove background on-device' : 'Select an image first (click it so it has the selection frame)';
+            }
+            if (mlBtn && !LOCAL_AI.busy) {
+                mlBtn.disabled = !isImg;
+                mlBtn.title = isImg ? 'Slice the image into object layers on-device' : 'Select an image first (click it so it has the selection frame)';
+            }
+        }
+
+        // ============ IPC RECEIVE (single bridge) ============
+
+        // Fetch remote images through the main process (no CORS taint).
+        function fetchImageBuffer(url) {
+            return new Promise((resolve, reject) => {
+                if (!window.electron || !window.electron.send) { reject(new Error('Desktop app required.')); return; }
+                fetchImageBuffer._id = (fetchImageBuffer._id || 0) + 1;
+                const myId = fetchImageBuffer._id;
+                fetchImageBuffer._pending = fetchImageBuffer._pending || {};
+                fetchImageBuffer._pending[myId] = { resolve, reject };
+                window.electron.send('fetch-image', url);
+                setTimeout(() => {
+                    if (fetchImageBuffer._pending[myId]) {
+                        delete fetchImageBuffer._pending[myId];
+                        reject(new Error('Image fetch timed out.'));
+                    }
+                }, 30000);
+            });
+        }
+
+        if (window.electron && window.electron.on) {
+            window.electron.on('fetch-image-result', (payload) => {
+                const pending = fetchImageBuffer._pending || {};
+                for (const id of Object.keys(pending)) {
+                    const p = pending[id];
+                    delete pending[id];
+                    payload.ok ? p.resolve(payload) : p.reject(new Error(payload.error || 'Fetch failed.'));
+                }
+            });
+
+            // Image sent from another quadrant (right-click menu) or dropped in.
+            window.electron.on('clipboard-image', (url) => {
+                if (/^data:/.test(url)) {
+                    addImageFromURL(url, 100, 100);
+                    return;
+                }
+                fetchImageBuffer(url).then(({ buffer }) => {
+                    addImageFromURL(URL.createObjectURL(new Blob([buffer])), 100, 100, true);
+                }).catch(err => showToast('Could not load image: ' + err.message));
+            });
+
+            window.electron.on('ai-remove-bg-result', (payload) => {
+                window.__aiPending = false;
+                const btn = document.getElementById('removeBgBtn');
+                const finish = () => { if (btn) { btn.innerText = '✨ Remove BG'; btn.disabled = false; syncRemoveBgButton(); } };
+                if (!payload || !payload.ok) {
+                    showToast((payload && payload.error) || 'AI processing failed.');
+                    finish();
+                    return;
+                }
+                const old = canvas.getActiveObject();
+                fabric.Image.fromURL('data:image/png;base64,' + payload.resultBase64, (newImg) => {
+                    if (!newImg || !newImg.width) { showToast('AI returned an invalid image.'); finish(); return; }
+                    newImg.set({
+                        left: old.left, top: old.top,
+                        scaleX: old.scaleX, scaleY: old.scaleY,
+                        angle: old.angle, originX: 'center', originY: 'center'
+                    });
+                    canvas.remove(old);
+                    canvas.add(newImg);
+                    canvas.setActiveObject(newImg);
+                    canvas.requestRenderAll();
+                    saveHistory();
+                    showToast('Background removed.');
+                    finish();
+                });
+            });
+        }
+
+        // ============ LOCAL AI (on-device BiRefNet + SAM2) ============
+        const LOCAL_AI = {
+            worker: null,
+            ready: false,
+            ramOk: (navigator.deviceMemory === undefined || navigator.deviceMemory >= 4) &&
+                   (navigator.hardwareConcurrency === undefined || navigator.hardwareConcurrency >= 4),
+            ramMsg: 'Local AI needs ~8GB system RAM. This device looks under-powered, so it is disabled.',
+            busy: false,
+            mode: localStorage.getItem('ai-device-mode') || 'auto',
+            requestCounter: 0,
+            pending: new Map(),
+        };
+
+        function initLocalAi() {
+            const bg = document.getElementById('aiRemoveBgLocalBtn');
+            const ml = document.getElementById('aiMagicLayersBtn');
+            if (!LOCAL_AI.ramOk) {
+                [bg, ml].forEach(b => { b.title = LOCAL_AI.ramMsg; b.innerText = '⛔ ' + b.innerText.slice(2); });
+                document.getElementById('aiStatus').textContent = LOCAL_AI.ramMsg;
+                return;
+            }
+            LOCAL_AI.worker = new Worker('local-ai-worker.mjs', { type: 'module' });
+            LOCAL_AI.worker.onmessage = (e) => handleAiWorkerMessage(e.data);
+            LOCAL_AI.worker.onerror = (e) => {
+                aiSetStatus('AI worker failed: ' + (e.message || 'unknown error'));
+            };
+            LOCAL_AI.worker.postMessage({ type: 'config', payload: { mode: LOCAL_AI.mode } });
+        }
+
+        function handleAiWorkerMessage(msg) {
+            const S = document.getElementById('aiStatus');
+            const bar = document.getElementById('aiProgressBar');
+            const fill = document.getElementById('aiProgressFill');
+            switch (msg.type) {
+                case 'device':
+                    const p = msg.probe || {};
+                    document.getElementById('aiProbeInfo').textContent =
+                        `WebGPU: ${p.available ? 'available' : 'unavailable'}${p.reason ? ' (' + p.reason + ')' : ''}`;
+                    updateDeviceButtons();
+                    break;
+                case 'status':
+                    S.textContent = msg.message || '';
+                    if (msg.phase === 'run') {
+                        bar.style.display = 'block';
+                        fill.style.width = msg.message.includes('%') ? msg.message.match(/\d+/)[0] + '%' : '50%';
+                    } else if (msg.phase === 'init') {
+                        bar.style.display = 'block';
+                        fill.style.width = '0%';
+                    }
+                    break;
+                case 'download':
+                    if (msg.total > 0) {
+                        fill.style.width = Math.round(msg.progress) + '%';
+                        S.textContent = 'Downloading AI Engine… ' + Math.round(msg.progress) + '%';
+                    }
+                    break;
+                case 'ready':
+                    LOCAL_AI.ready = true;
+                    S.textContent = 'AI engine ready (' + msg.device.toUpperCase() + ').';
+                    enableLocalAiButtons();
+                    break;
+                case 'done': {
+                    const pending = LOCAL_AI.pending.get(msg.id);
+                    LOCAL_AI.pending.delete(msg.id);
+                    LOCAL_AI.busy = false;
+                    bar.style.display = 'none';
+                    S.textContent = '';
+                    if (pending) pending(msg);
+                    break;
+                }
+                case 'error':
+                    LOCAL_AI.busy = false;
+                    bar.style.display = 'none';
+                    S.textContent = '';
+                    showToast('Local AI error: ' + msg.message);
+                    console.error('[LocalAI]', msg.stack || msg.message);
+                    break;
+            }
+        }
+
+        function enableLocalAiButtons() {
+            document.getElementById('aiRemoveBgLocalBtn').disabled = false;
+            document.getElementById('aiMagicLayersBtn').disabled = false;
+        }
+
+        function aiSetStatus(text) {
+            document.getElementById('aiStatus').textContent = text;
+        }
+
+        function toggleAiGear() {
+            const m = document.getElementById('aiGearMenu');
+            m.style.display = (m.style.display === 'none') ? 'block' : 'none';
+        }
+
+        function updateDeviceButtons() {
+            ['auto', 'gpu', 'cpu'].forEach(mode => {
+                const b = document.getElementById('devBtn-' + mode);
+                if (b) b.classList.toggle('active', LOCAL_AI.mode === mode);
+            });
+            document.getElementById('aiDeviceLabel').textContent = 'Engine: ' +
+                ({ auto: 'Auto', gpu: 'GPU Only', cpu: 'CPU Only' }[LOCAL_AI.mode]);
+        }
+
+        function setDeviceMode(mode) {
+            LOCAL_AI.mode = mode;
+            localStorage.setItem('ai-device-mode', mode);
+            updateDeviceButtons();
+            // Changing execution environment reloads the models on that device.
+            LOCAL_AI.ready = false;
+            document.getElementById('aiRemoveBgLocalBtn').disabled = true;
+            document.getElementById('aiMagicLayersBtn').disabled = true;
+            LOCAL_AI.worker.postMessage({ type: 'config', payload: { mode } });
+            showToast('AI engine set to ' + mode.toUpperCase() + '. Models will load on next use.');
+        }
+
+        function aiRequest(type, payload, onDone) {
+            if (!LOCAL_AI.worker || LOCAL_AI.busy) {
+                if (LOCAL_AI.busy) showToast('AI is already processing. Please wait.');
+                return;
+            }
+            LOCAL_AI.busy = true;
+            const id = ++LOCAL_AI.requestCounter;
+            LOCAL_AI.pending.set(id, onDone);
+            LOCAL_AI.worker.postMessage({ type, id, payload });
+        }
+
+        async function getImageBuffer(obj) {
+            // Read the image's source bytes in the renderer. Works for blob:
+            // URLs (main-process fetched images) and data: URLs (file import).
+            const src = obj.getSrc ? obj.getSrc() : obj.toDataURL();
+            const resp = await fetch(src);
+            return await resp.arrayBuffer();
+        }
+
+        async function localAiRemoveBg() {
+            const obj = canvas.getActiveObject();
+            if (!obj || obj.type !== 'image') { showToast('Select an image first (click it so it has the selection frame).'); return; }
+            const btn = document.getElementById('aiRemoveBgLocalBtn');
+            btn.disabled = true; btn.innerText = '🪄 Processing…';
+            const finish = () => { btn.innerText = '🪄 Remove Background (Local AI)'; syncRemoveBgButton(); };
+            let buffer;
+            try { buffer = await getImageBuffer(obj); }
+            catch (err) { showToast('Could not read this image: ' + err.message); finish(); return; }
+            aiRequest('remove-bg', { imageBuffer: buffer }, (msg) => {
+                fabric.Image.fromURL(URL.createObjectURL(msg.blob), (newImg) => {
+                    if (!newImg || !newImg.width) { showToast('AI returned an invalid image.'); finish(); return; }
+                    // Preserve the original's placement and on-canvas size.
+                    newImg.set({
+                        left: obj.left, top: obj.top,
+                        scaleX: (obj.scaleX * obj.width) / newImg.width,
+                        scaleY: (obj.scaleY * obj.height) / newImg.height,
+                        angle: obj.angle, originX: obj.originX, originY: obj.originY
+                    });
+                    canvas.remove(obj);
+                    canvas.add(newImg);
+                    canvas.setActiveObject(newImg);
+                    canvas.requestRenderAll();
+                    saveHistory();
+                    showToast('Background removed (' + (msg.engine || msg.device) + '). If the result looks wrong, the photo may need GPU mode.');
+                    finish();
+                });
+            });
+        }
+
+        async function localAiMagicLayers() {
+            const obj = canvas.getActiveObject();
+            if (!obj || obj.type !== 'image') { showToast('Select an image first.'); return; }
+            const btn = document.getElementById('aiMagicLayersBtn');
+            btn.disabled = true; btn.innerText = '🧩 Processing…';
+            const finish = () => { btn.innerText = '🧩 Split into Magic Layers (Local AI)'; syncRemoveBgButton(); };
+            let buffer;
+            try { buffer = await getImageBuffer(obj); }
+            catch (err) { showToast('Could not read this image: ' + err.message); finish(); return; }
+            // Placement geometry of the source image on the canvas.
+            // getImageBuffer() downsamples to ≤768px inside the worker, so
+            // mask coords are relative to that ANALYSIS size, not the source
+            // file — the worker reports it as imageWidth/imageHeight.
+            const imgLeft = obj.left, imgTop = obj.top;
+            const imgW = obj.width * obj.scaleX, imgH = obj.height * obj.scaleY;
+            aiRequest('magic-layers', { imageBuffer: buffer }, async (msg) => {
+                if (!msg.layers || !msg.layers.length) {
+                    showToast('No objects found in this image.');
+                    finish();
+                    return;
+                }
+                // Source-frame (obj's own pixel space) → canvas mapping.
+                // obj.left/top are the CENTER when origin is center.
+                const srcLeft = imgLeft - (obj.originX === 'center' ? obj.width * obj.scaleX / 2 : 0);
+                const srcTop = imgTop - (obj.originY === 'center' ? obj.height * obj.scaleY / 2 : 0);
+                const sx = imgW / obj.width;   // canvas px per source px
+                const sy = imgH / obj.height;
+                const added = [];
+                for (const layer of msg.layers) {
+                    const url = URL.createObjectURL(layer.blob);
+                    const img = await new Promise((res) => fabric.Image.fromURL(url, res));
+                    URL.revokeObjectURL(url);
+                    if (!img || !img.width) continue;
+                    // layer.left/top are in ANALYSIS coords (0..imageWidth).
+                    // → source coords: multiply by (srcW / analysisW).
+                    const scaleToSrc = obj.width / msg.imageWidth;
+                    img.set({
+                        left: srcLeft + layer.left * scaleToSrc * sx,
+                        top: srcTop + layer.top * scaleToSrc * sy,
+                        originX: 'left', originY: 'top'
+                    });
+                    canvas.add(img);
+                    added.push(img);
+                }
+                canvas.remove(obj);
+                if (added.length) {
+                    const sel = new fabric.ActiveSelection(added, { canvas: canvas });
+                    canvas.setActiveObject(sel);
+                }
+                canvas.requestRenderAll();
+                saveHistory();
+                showToast(`Magic Layers: ${added.length} objects extracted.`);
+                finish();
+            });
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        // Boot the Local AI engine (button enablement happens on 'ready').
+        initLocalAi();
+
+        // ============ SLICE (cookie-cutter) ============
+        function sliceGroup() {
+            const active = canvas.getActiveObject();
+            if (!active || active.type !== 'activeSelection') {
+                showToast('Select both the shape and the image to slice (drag a box around both).');
+                return;
+            }
+
+            const objects = active.getObjects();
+            const shape = objects.find(o => o.type !== 'image');
+            const target = objects.find(o => o.type === 'image');
+
+            if (!shape || !target) {
+                showToast('Please select one shape and one image.');
+                return;
+            }
+
+            const shapeMatrix = shape.calcTransformMatrix();
+            const targetMatrix = target.calcTransformMatrix();
+
+            const shapePos = fabric.util.transformPoint({ x: 0, y: 0 }, shapeMatrix);
+            const targetPos = fabric.util.transformPoint({ x: 0, y: 0 }, targetMatrix);
+
+            const getAbsProps = (obj) => {
+                let sX = obj.scaleX, sY = obj.scaleY, angle = obj.angle;
+                let curr = obj.group;
+                while (curr) {
+                    sX *= curr.scaleX;
+                    sY *= curr.scaleY;
+                    angle += curr.angle;
+                    curr = curr.group;
+                }
+                return { scaleX: sX, scaleY: sY, angle: angle };
+            };
+
+            const sProps = getAbsProps(shape);
+            const tProps = getAbsProps(target);
+
+            shape.clone((clonedShape) => {
+                const diffX = shapePos.x - targetPos.x;
+                const diffY = shapePos.y - targetPos.y;
+
+                const angleRad = fabric.util.degreesToRadians(-tProps.angle);
+                const localX = diffX * Math.cos(angleRad) - diffY * Math.sin(angleRad);
+                const localY = diffX * Math.sin(angleRad) + diffY * Math.cos(angleRad);
+
+                clonedShape.set({
+                    absolutePositioned: false,
+                    left: localX / tProps.scaleX,
+                    top: localY / tProps.scaleY,
+                    scaleX: sProps.scaleX / tProps.scaleX,
+                    scaleY: sProps.scaleY / tProps.scaleY,
+                    angle: sProps.angle - tProps.angle,
+                    originX: 'center',
+                    originY: 'center'
+                });
+
+                target.clone((clonedIn) => {
+                    clonedIn.set({
+                        clipPath: clonedShape,
+                        left: targetPos.x,
+                        top: targetPos.y,
+                        scaleX: tProps.scaleX,
+                        scaleY: tProps.scaleY,
+                        angle: tProps.angle,
+                        originX: 'center',
+                        originY: 'center'
+                    });
+
+                    clonedShape.clone((clonedShapeOut) => {
+                        clonedShapeOut.set({ inverted: true });
+                        target.clone((clonedOut) => {
+                            clonedOut.set({
+                                clipPath: clonedShapeOut,
+                                left: targetPos.x,
+                                top: targetPos.y,
+                                scaleX: tProps.scaleX,
+                                scaleY: tProps.scaleY,
+                                angle: tProps.angle,
+                                originX: 'center',
+                                originY: 'center'
+                            });
+
+                            canvas.add(clonedIn);
+                            canvas.add(clonedOut);
+                            canvas.remove(target);
+                            canvas.remove(shape);
+                            canvas.discardActiveObject();
+
+                            canvas.setActiveObject(clonedIn);
+                            canvas.requestRenderAll();
+                            saveHistory();
+                            showToast('Sliced into two pieces.');
+                        });
+                    });
+                });
+            });
+        }
+
+        // ============ WELD / UNWELD ============
+        function weldObjects() {
+            const active = canvas.getActiveObject();
+            if (!active || active.type !== 'activeSelection') {
+                showToast('Select multiple objects (drag a box) to weld.');
+                return;
+            }
+            const group = active.toGroup();
+            canvas.requestRenderAll();
+            saveHistory();
+            showToast('Welded into one object.');
+        }
+
+        function unweldObjects() {
+            const active = canvas.getActiveObject();
+            if (!active || active.type !== 'group') {
+                showToast('Select a welded group to unweld.');
+                return;
+            }
+            canvas.discardActiveObject();
+            const items = active.getObjects().slice();
+            active.ungroupOnCanvas();          // restore each member's absolute transform
+            canvas.remove(active);             // take the group shell off the canvas
+            items.forEach(o => canvas.add(o));
+            const sel = new fabric.ActiveSelection(items, { canvas: canvas });
+            canvas.setActiveObject(sel);
+            canvas.requestRenderAll();
+            saveHistory();
+            showToast('Ungrouped.');
+        }
+
+        // ============ TEXT ============
+        function addText() {
+            const center = canvas.getCenter();
+            const text = new fabric.IText('Double click to edit', {
+                left: center.left,
+                top: center.top,
+                fill: document.getElementById('textColor').value,
+                fontSize: parseInt(document.getElementById('fontSize').value),
+                fontFamily: document.getElementById('fontFamily').value,
+                originX: 'center',
+                originY: 'center'
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+        }
+
+        function updateTextProperty(prop, value) {
+            const obj = canvas.getActiveObject();
+            if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text')) {
+                obj.set(prop, value);
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        function toggleTextStyle(style) {
+            const obj = canvas.getActiveObject();
+            if (obj && (obj.type === 'i-text' || obj.type === 'textbox' || obj.type === 'text')) {
+                if (style === 'bold') {
+                    obj.set('fontWeight', obj.fontWeight === 'bold' ? 'normal' : 'bold');
+                } else if (style === 'italic') {
+                    obj.set('fontStyle', obj.fontStyle === 'italic' ? 'normal' : 'italic');
+                } else if (style === 'underline') {
+                    obj.set('underline', !obj.underline);
+                }
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        // ============ SHAPES ============
+        function addRect() {
+            const center = canvas.getCenter();
+            canvas.add(new fabric.Rect({ left: center.left, top: center.top, fill: document.getElementById('fillColor').value, width: 100, height: 100, originX: 'center', originY: 'center' }));
+        }
+        function addCircle() {
+            const center = canvas.getCenter();
+            canvas.add(new fabric.Circle({ left: center.left, top: center.top, fill: document.getElementById('fillColor').value, radius: 50, originX: 'center', originY: 'center' }));
+        }
+        function addTriangle() {
+            const center = canvas.getCenter();
+            canvas.add(new fabric.Triangle({ left: center.left, top: center.top, fill: document.getElementById('fillColor').value, width: 100, height: 100, originX: 'center', originY: 'center' }));
+        }
+        function addHexagon() {
+            const center = canvas.getCenter();
+            const side = 50;
+            const points = [];
+            for (let i = 0; i < 6; i++) {
+                points.push({ x: side * Math.cos(i * 2 * Math.PI / 6), y: side * Math.sin(i * 2 * Math.PI / 6) });
+            }
+            canvas.add(new fabric.Polygon(points, { left: center.left, top: center.top, fill: document.getElementById('fillColor').value, originX: 'center', originY: 'center' }));
+        }
+        function addHeart() {
+            const center = canvas.getCenter();
+            const path = "M 272.70141,238.71731 C 206.46141,238.71731 152.70141,292.47731 152.70141,358.71731 C 152.70141,493.47282 288.63461,528.41746 372.70141,702.71731 C 456.76811,528.41746 592.70141,493.47282 592.70141,358.71731 C 592.70141,292.47731 538.94141,238.71731 472.70141,238.71731 C 432.03771,238.71731 396.19321,258.99946 372.70141,289.84231 C 349.20961,258.99946 313.36511,238.71731 272.70141,238.71731 z";
+            canvas.add(new fabric.Path(path, { left: center.left, top: center.top, fill: document.getElementById('fillColor').value, scaleX: 0.2, scaleY: 0.2, originX: 'center', originY: 'center' }));
+        }
+        function addPentagon() {
+            const center = canvas.getCenter();
+            const side = 50;
+            const points = [];
+            for (let i = 0; i < 5; i++) {
+                points.push({ x: side * Math.cos(i * 2 * Math.PI / 5 - Math.PI / 2), y: side * Math.sin(i * 2 * Math.PI / 5 - Math.PI / 2) });
+            }
+            canvas.add(new fabric.Polygon(points, { left: center.left, top: center.top, fill: document.getElementById('fillColor').value, originX: 'center', originY: 'center' }));
+        }
+        function addOctagon() {
+            const center = canvas.getCenter();
+            const side = 50;
+            const points = [];
+            for (let i = 0; i < 8; i++) {
+                points.push({ x: side * Math.cos(i * 2 * Math.PI / 8 - Math.PI / 8), y: side * Math.sin(i * 2 * Math.PI / 8 - Math.PI / 8) });
+            }
+            canvas.add(new fabric.Polygon(points, { left: center.left, top: center.top, fill: document.getElementById('fillColor').value, originX: 'center', originY: 'center' }));
+        }
+        function addCloud() {
+            const center = canvas.getCenter();
+            const path = "M 25,60 a 20,20 1 0,0 0,40 h 50 a 20,20 1 0,0 0,-40 a 10,10 1 0,0 -15,-10 a 15,15 1 0,0 -35,10 z";
+            canvas.add(new fabric.Path(path, { left: center.left, top: center.top, fill: document.getElementById('fillColor').value, scaleX: 1.5, scaleY: 1.5, originX: 'center', originY: 'center' }));
+        }
+        function addStar() {
+            const center = canvas.getCenter();
+            canvas.add(new fabric.Polygon([{ x: 0, y: 0 }, { x: 10, y: 30 }, { x: 40, y: 30 }, { x: 15, y: 50 }, { x: 25, y: 80 }, { x: 0, y: 60 }, { x: -25, y: 80 }, { x: -15, y: 50 }, { x: -40, y: 30 }, { x: -10, y: 30 }], { left: center.left, top: center.top, fill: document.getElementById('fillColor').value, originX: 'center', originY: 'center' }));
+        }
+
+        function addFrameShape(type) {
+            let shape;
+            const common = { left: 200, top: 200, fill: '#333', opacity: 0.5, stroke: '#00ff00', strokeWidth: 2, strokeDashArray: [5, 5] };
+            if (type === 'circle') shape = new fabric.Circle({ ...common, radius: 100 });
+            if (type === 'rect') shape = new fabric.Rect({ ...common, width: 200, height: 150 });
+            if (type === 'star') shape = new fabric.Polygon([{ x: 0, y: 0 }, { x: 10, y: 30 }, { x: 40, y: 30 }, { x: 15, y: 50 }, { x: 25, y: 80 }, { x: 0, y: 60 }, { x: -25, y: 80 }, { x: -15, y: 50 }, { x: -40, y: 30 }, { x: -10, y: 30 }], { ...common });
+            if (type === 'heart') {
+                const path = "M 272.70141,238.71731 C 206.46141,238.71731 152.70141,292.47731 152.70141,358.71731 C 152.70141,493.47282 288.63461,528.41746 372.70141,702.71731 C 456.76811,528.41746 592.70141,493.47282 592.70141,358.71731 C 592.70141,292.47731 538.94141,238.71731 472.70141,238.71731 C 432.03771,238.71731 396.19321,258.99946 372.70141,289.84231 C 349.20961,258.99946 313.36511,238.71731 272.70141,238.71731 z";
+                shape = new fabric.Path(path, { ...common, scaleX: 0.3, scaleY: 0.3 });
+            }
+            shape.set('isFrame', true);
+            canvas.add(shape);
+            canvas.requestRenderAll();
+        }
+
+        function addFrame(type) {
+            const active = canvas.getActiveObject();
+            if (!active) {
+                showToast('Select an object to frame.');
+                return;
+            }
+            const bounds = active.getBoundingRect();
+            let frame;
+
+            if (type === 'classic') {
+                frame = new fabric.Rect({
+                    left: bounds.left - 10,
+                    top: bounds.top - 10,
+                    width: bounds.width + 20,
+                    height: bounds.height + 20,
+                    fill: 'transparent',
+                    stroke: '#ffd700',
+                    strokeWidth: 10,
+                    rx: 5, ry: 5
+                });
+            } else if (type === 'modern') {
+                frame = new fabric.Rect({
+                    left: bounds.left - 5,
+                    top: bounds.top - 5,
+                    width: bounds.width + 10,
+                    height: bounds.height + 10,
+                    fill: 'transparent',
+                    stroke: '#ffffff',
+                    strokeWidth: 2
+                });
+            } else if (type === 'polaroid') {
+                frame = new fabric.Rect({
+                    left: bounds.left - 15,
+                    top: bounds.top - 15,
+                    width: bounds.width + 30,
+                    height: bounds.height + 60,
+                    fill: '#ffffff',
+                    shadow: 'rgba(0,0,0,0.3) 5px 5px 10px'
+                });
+                active.bringToFront();
+            }
+
+            if (frame) {
+                canvas.add(frame);
+                if (type === 'polaroid') frame.sendToBack();
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        // ============ IMAGE PLACEMENT HELPERS ============
+        function addImageFromURL(url, left, top, revoke) {
+            fabric.Image.fromURL(url, (img) => {
+                if (revoke) URL.revokeObjectURL(url);
+                if (!img || !img.width) { showToast('Could not decode that image.'); return; }
+                img.set({ left: left, top: top, originX: 'center', originY: 'center' });
+                canvas.add(img);
+                canvas.setActiveObject(img);
+                canvas.requestRenderAll();
+                saveHistory();
+                showToast('Image added to workspace.');
+            });
+        }
+
+        function placeImageAt(img, pointer, targetFrame) {
+            img.scaleToWidth(Math.min(300, canvas.getWidth() / 3));
+            if (targetFrame) {
+                const frameCenter = targetFrame.getCenterPoint();
+                const frameScaleX = targetFrame.scaleX;
+                const frameScaleY = targetFrame.scaleY;
+                const frameAngle = targetFrame.angle;
+                targetFrame.clone((clonedFrame) => {
+                    clonedFrame.set({
+                        left: 0, top: 0, scaleX: 1, scaleY: 1, angle: 0,
+                        originX: 'center', originY: 'center', absolutePositioned: false
+                    });
+                    img.set({
+                        clipPath: clonedFrame,
+                        left: frameCenter.x, top: frameCenter.y,
+                        scaleX: frameScaleX, scaleY: frameScaleY, angle: frameAngle,
+                        originX: 'center', originY: 'center'
+                    });
+                    canvas.remove(targetFrame);
+                    canvas.add(img);
+                    canvas.setActiveObject(img);
+                    canvas.requestRenderAll();
+                    saveHistory();
+                });
+            } else {
+                img.set({ left: pointer.x, top: pointer.y, originX: 'center', originY: 'center' });
+                canvas.add(img);
+                canvas.setActiveObject(img);
+                canvas.requestRenderAll();
+                saveHistory();
+            }
+        }
+
+        // ============ DROP HANDLING ============
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', handleDrop);
+
+        async function handleDrop(e) {
+            e.preventDefault();
+            const url = e.dataTransfer.getData('url') || e.dataTransfer.getData('text/plain');
+            if (!url) { showToast('Nothing droppable here.'); return; }
+            const pointer = canvas.getPointer(e);
+            const targetFrame = canvas.getObjects().find(obj => obj.isFrame && obj.containsPoint(pointer));
+
+            if (/^data:/.test(url)) {
+                fabric.Image.fromURL(url, (img) => placeImageAt(img, pointer, targetFrame));
+                return;
+            }
+            try {
+                const { buffer } = await fetchImageBuffer(url);
+                const objUrl = URL.createObjectURL(new Blob([buffer]));
+                fabric.Image.fromURL(objUrl, (img) => {
+                    URL.revokeObjectURL(objUrl);
+                    placeImageAt(img, pointer, targetFrame);
+                });
+            } catch (err) {
+                showToast('Could not load image: ' + err.message);
+            }
+        }
+
+        // ============ SELECTION HELPERS (honest versions) ============
+        function startRectSelect() {
+            stopAllTools();
+            canvas.add(new fabric.Rect({
+                left: canvas.getWidth() / 2 - 100, top: canvas.getHeight() / 2 - 100, width: 200, height: 200,
+                fill: 'rgba(0,255,0,0.1)', stroke: '#00ff00', strokeDashArray: [5, 5],
+                isFrame: true
+            }));
+            showToast('Dashed mask shape added: drop an image into it, or Slice an image with it.');
+        }
+
+        function startLassoSelect() {
+            stopAllTools();
+            setBrush('Pencil');
+            if (!canvas.isDrawingMode) toggleDrawingMode();
+            showToast('Draw around an area, then use Slice with an image to cut it out.');
+        }
+
+        // ============ BOOT ============
+        initCanvas();
+        setTimeout(resizeCanvas, 300); // settle fonts/layout, then true up geometry
+    </script>
+</body>
+</html>

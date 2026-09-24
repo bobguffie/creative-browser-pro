@@ -1,0 +1,44 @@
+{
+  "name": "creative-browser-pro",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Professional Creative Workspace Browser",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.bob.creativebrowser",
+    "productName": "CreativeBrowser",
+    "files": [
+      "main.cjs",
+      "preload.js",
+      "workspace.html",
+      "controls.html",
+      "local-ai-worker.mjs",
+      "vendor/**/*",
+      "icon.png"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    }
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "@huggingface/transformers": "^4.3.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
