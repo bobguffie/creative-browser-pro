@@ -1,7 +1,7 @@
 {
   "name": "creative-browser-pro",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Professional Creative Workspace Browser",
   "main": "main.cjs",
   "scripts": {
@@ -25,7 +25,8 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "category": "Graphics"
     },
     "win": {
       "target": "nsis",
