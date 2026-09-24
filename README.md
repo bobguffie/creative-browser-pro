@@ -1,63 +1,92 @@
-# Creative Browser
+<div align="center">
 
-A desktop app (Electron) that shows four live web quadrants — Search, AI image
-generation, visual references, and a built-in Fabric.js design workspace — with
-a shared navigation bar and cross-quadrant image tools.
+# 🎨 Creative Browser Pro
 
-## Run
+**A 4-quadrant desktop browser with a built-in AI design studio — everything runs on your machine.**
 
-```bash
-npm install
-cp .env.example .env    # optional: add your GEMINI_API_KEY for AI Remove BG
-npm start
-```
+[![Release](https://img.shields.io/github/v/release/bobguffie/creative-browser-pro?label=%E2%AC%87%EF%B8%8F%20Download&color=success)](https://github.com/bobguffie/creative-browser-pro/releases/latest)
+[![Build](https://github.com/bobguffie/creative-browser-pro/actions/workflows/build.yml/badge.svg)](https://github.com/bobguffie/creative-browser-pro/actions/workflows/build.yml)
 
-> On Linux, if the window fails to launch on some GPU drivers, run:
-> `npm start -- --disable-gpu --in-process-gpu`
+**[⬇️ DOWNLOAD THE LATEST APPIMAGE](https://github.com/bobguffie/creative-browser-pro/releases/latest)**
 
-## Layout
+*Linux · ~430 MB · No installation — just download, `chmod +x`, and run*
+
+</div>
+
+---
+
+## What is it?
+
+A desktop app that puts everything a creator needs on one screen:
 
 | Quadrant | Purpose |
 |----------|---------|
-| Search (top-left) | Google |
-| AI Assets (top-right) | Bing Image Creator |
-| Reference (bottom-left) | Pinterest |
-| Designer (bottom-right) | Built-in design workspace |
+| 🔍 **Search** | Live Google |
+| 🖌️ **AI Assets** | Bing Image Creator |
+| 🖼️ **Reference** | Pinterest (or any site) |
+| 🎨 **Designer** | Full Fabric.js design studio — built in |
 
-Type a URL in any nav bar and press **Enter** or **GO** to navigate that
-quadrant. The 🖥️ button in the workspace expands it to fullscreen.
+Every quadrant is a real browser view: type a URL in its bar and press **Enter**.
 
-## Workspace tools
+## ✨ Local AI (on-device, private)
 
-- **Shapes / frames / text** — add from the sidebar drawers
-- **Brushes** — pencil, circle, spray, pattern; continuous or stamp mode
-- **Slice** — select a shape + an image together (drag a box), then ✂️ Slice
-  to cut the image into "inside the shape" and "outside" pieces
-- **Weld / Unweld** — group or ungroup the current selection
-- **Clone stamp / spot healing** — retouch images (Alt+Click sets clone source)
-- **Eraser** — erase image pixels directly (Esc exits any tool)
-- **Color Key** — click a color on an image to make it transparent
-- **Filters** — brightness/contrast/saturation/blur + quick presets
-- **Remove BG (✨)** — AI background removal via Gemini (see below)
-- **Undo/Redo, layers, lock, snap, import, save PNG**
+Your images **never leave your computer**. Models download once (~100-200MB),
+then run entirely offline on your GPU or CPU:
 
-Right-click any image in another quadrant → **Send Image to Workspace**.
-Double-click a masked image to reposition it inside its frame.
+| Tool | What it does |
+|------|-------------|
+| 🪄 **Remove Background** | BiRefNet segmentation (WebGPU) or edge flood-fill matte (CPU) → transparent PNG |
+| 🧩 **Magic Object Layers** | SAM 2 Automatic Mask Generator slices a photo into movable object layers — Canva-style |
+| ⚙️ **Auto / GPU / CPU toggle** | WebGPU with fp16 when available; graceful WASM fallback |
 
-## AI Remove BG (optional)
+Plus the full studio: shapes, text, brushes (pencil/circle/spray/pattern),
+clone stamp, spot healing, color key, slice/weld, frames, layers panel,
+filters, undo/redo, PNG export.
 
-The Gemini API key is read **only in the main process** from `.env`
-(never bundled into the renderer). Without a key the button explains what's
-missing instead of failing silently.
+## 🚀 Quick start
 
-```
-GEMINI_API_KEY=your_key_here
-```
+**Option A — download the AppImage (recommended):**
 
-## Packaging
+Grab it from the [Releases page](https://github.com/bobguffie/creative-browser-pro/releases/latest):
 
 ```bash
-npm run dist
+chmod +x CreativeBrowser-*.AppImage
+./CreativeBrowser-*.AppImage
 ```
 
-Output lands in `release/` (AppImage on Linux, NSIS installer on Windows).
+**Option B — run from source:**
+
+```bash
+git clone https://github.com/bobguffie/creative-browser-pro.git
+cd creative-browser-pro
+npm install
+npm start
+```
+
+> 💡 On Linux machines with GPU driver trouble, run:
+> `npm start -- --no-sandbox --disable-gpu --in-process-gpu`
+
+## 🔑 Optional: cloud AI background removal
+
+The ✨ **Remove BG** button (cloud) needs a free Gemini API key:
+
+```bash
+cp .env.example .env   # then paste your key from aistudio.google.com/apikey
+```
+
+The 🪄 **Local AI** buttons need no key at all.
+
+## 🛠️ Building from source
+
+```bash
+npm run dist        # → release/*.AppImage
+```
+
+CI does this automatically on every push — see the
+[Actions tab](https://github.com/bobguffie/creative-browser-pro/actions) or the
+[latest release](https://github.com/bobguffie/creative-browser-pro/releases/latest).
+
+## 📦 Tech
+
+Electron 30 · Fabric.js 5.3 · Transformers.js 4 (ONNX Runtime Web) ·
+SAM 2 / SlimSAM / BiRefNet · models cached in browser CacheStorage
