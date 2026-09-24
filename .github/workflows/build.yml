@@ -29,8 +29,10 @@ jobs:
       - name: Build AppImage
         run: npm run dist -- --publish never
 
+      # v4.x latest is Node-24 native on current runners; the v5 major still
+      # ships a node20 runtime for backward compat, so pin v4 line here.
       - name: Upload AppImage artifact (every build)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: CreativeBrowser-AppImage
           path: release/*.AppImage
