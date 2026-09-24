@@ -4,10 +4,10 @@
 
 **A 4-quadrant desktop browser with a built-in AI design studio — everything runs on your machine.**
 
-[![Release](https://img.shields.io/github/v/release/bobguffie/creative-browser-2?label=%E2%AC%87%EF%B8%8F%20Download&color=success)](https://github.com/bobguffie/creative-browser-2/releases/latest)
-[![Build](https://github.com/bobguffie/creative-browser-2/actions/workflows/build.yml/badge.svg)](https://github.com/bobguffie/creative-browser-2/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/bobguffie/creative-browser-pro?label=%E2%AC%87%EF%B8%8F%20Download&color=success)](https://github.com/bobguffie/creative-browser-pro/releases/latest)
+[![Build](https://github.com/bobguffie/creative-browser-pro/actions/workflows/build.yml/badge.svg)](https://github.com/bobguffie/creative-browser-pro/actions/workflows/build.yml)
 
-**[⬇️ DOWNLOAD THE LATEST APPIMAGE](https://github.com/bobguffie/creative-browser-2/releases/latest)**
+**[⬇️ DOWNLOAD THE LATEST APPIMAGE](https://github.com/bobguffie/creative-browser-pro/releases/latest)**
 
 *Linux · ~430 MB · No installation — just download, `chmod +x`, and run*
 
@@ -47,7 +47,7 @@ filters, undo/redo, PNG export.
 
 **Option A — download the AppImage (recommended):**
 
-Grab it from the [Releases page](https://github.com/bobguffie/creative-browser-2/releases/latest):
+Grab it from the [Releases page](https://github.com/bobguffie/creative-browser-pro/releases/latest):
 
 ```bash
 chmod +x CreativeBrowser-*.AppImage
@@ -57,8 +57,8 @@ chmod +x CreativeBrowser-*.AppImage
 **Option B — run from source:**
 
 ```bash
-git clone https://github.com/bobguffie/creative-browser-2.git
-cd creative-browser-2
+git clone https://github.com/bobguffie/creative-browser-pro.git
+cd creative-browser-pro
 npm install
 npm start
 ```
@@ -83,8 +83,8 @@ npm run dist        # → release/*.AppImage
 ```
 
 CI does this automatically on every push — see the
-[Actions tab](https://github.com/bobguffie/creative-browser-2/actions) or the
-[latest release](https://github.com/bobguffie/creative-browser-2/releases/latest).
+[Actions tab](https://github.com/bobguffie/creative-browser-pro/actions) or the
+[latest release](https://github.com/bobguffie/creative-browser-pro/releases/latest).
 
 ## 📦 Tech
 
